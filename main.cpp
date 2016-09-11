@@ -1,4 +1,6 @@
 #include <iostream>
+#include <sstream>
+#include <string>
 #include <cstring>
 #include <unistd.h>
 #include <vector>
@@ -8,24 +10,11 @@
 
 using namespace std;
 
-vector<char*> getPaths(char *paths){
-    vector<char*> path;
-    char* buff = strtok(paths, ":");
-    path.push_back(buff);
-    while(buff){
-        buff = strtok(NULL, ":");
-        path.push_back(buff);
-    }
-
-    return path;
-}
-
 void printPromt()
 {
     char* USER;
     char* PWD;
     USER=getenv("USER"); PWD=get_current_dir_name();
-    if(PWD[3]!='/') strcat(PWD,"/");
     printf("%s@%s:$ ", USER, PWD);
 }
 
@@ -38,72 +27,76 @@ vector<char*> parseCommand(char* input)
         buff = strtok(NULL, " ");
         params.push_back(buff);
     }
-    params.push_back(NULL);
     return params;
 }
 
-void execCommand(vector<char*> params, char* PATH_ENV)
+void execCommand(vector<char*> params, vector<string> commands)
 {
     if(params[0][0]=='c' && params[0][1]=='d'){
-        if(params.size() != 3){
+        if(params.size() != 2){
             if(params[1][0]=='/'){
                 chdir(params[1]);
             }else{
-                char* currPath = get_current_dir_name()+'/';
+                char currPath[4096];
+                strcpy(currPath, get_current_dir_name());
+                strcat(currPath, "/");
                 strcat(currPath, params[1]);
                 chdir(currPath);
             }
         }
     } else {
-        int status, execStatus=-1, pathNumber=0;
-        vector<char*> path;
-        char *buff  = strtok(PATH_ENV, ":");
-        path.push_back(buff);
-        while(buff){
-            buff = strtok(PATH_ENV, ":");
-            path.push_back(buff);
-        }
-        char *command;
-        switch(pid_t pid=fork()){
+        int status, execStatus=-1;
+        size_t pathNumber=0;
+        pid_t pid;
+
+        switch(pid=fork()){
         case -1:
-            cout<<"Error -1"<<endl;
+            printf("Error -1\n");
+            break;
         case 0:
-            while(execStatus==-1 && pathNumber<path.size()){
-                cout<<path[pathNumber]<<endl;
-                command = path[pathNumber];
-                strcat(command, "/");
-                strcat(command, params[0]);
-                cout<<command<<endl;
-                execStatus = execve(command, &params[0], 0);
-                cout<<execStatus<<endl;
+            printf("%i", execStatus);
+            do{
+                execStatus = execve(commands[pathNumber].c_str() , &params[0], 0);
                 pathNumber++;
-            }
+            }while(execStatus==-1 && pathNumber<commands.size());
+            break;
         default:
             waitpid(-1, &status, 0);
+            break;
         }
     }
 }
 
+vector<string> getCommand(vector<char*> params){
+    char* CPATH=getenv("PATH");
+    string PATH(CPATH);
+    istringstream iss(PATH);
+    vector<string> commands;
+    string buffer;
+    while(getline(iss, buffer, ':')){
+        buffer+="/";
+        buffer+=params[0];
+        commands.push_back(buffer);
+    }
+    return commands;
+}
+
 int main(int argc, char *argv[], char *envp[])
 {
-    char* PATH_ENVIOREMENT = getenv("PATH");
-    cout<<"Welcome to nsh!"<<endl<<PATH_ENVIOREMENT<<endl;
+    cout<<"Welcome to nsh!"<<endl;
     while(true)
     {
         vector<char*> params;
         printPromt();
 
+        string input;
+        getline(cin, input);
+        char* inputString = (char*)input.c_str();
 
-        string inputString;
-        getline(cin, inputString);
-        char cInputString[inputString.length()+1];
-        strcpy(cInputString, inputString.c_str());
+        params = parseCommand(inputString);
+        vector<string> commands = getCommand(params);
+        execCommand(params, commands);
 
-        params = parseCommand(cInputString);
-
-        execCommand(params, PATH_ENVIOREMENT);
-        inputString.clear();
-        params.clear();
     }
 }
 
